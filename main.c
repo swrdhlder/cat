@@ -9,6 +9,23 @@ typedef struct arguments{
     char** filenames;
 } arguments;
 
+int read_stdin(){
+    int exit_code = 0;
+    int buf_cap = MAX_LEN;
+    char* buf = malloc(buf_cap *sizeof(char));
+    if (buf == NULL){
+        perror("ERROR - malloc failed\n");
+        exit(1);
+    }
+
+    while(fgets(buf, buf_cap, stdin)){
+        exit_code = fputs(buf, stdout);
+    }
+
+    return exit_code;
+}
+
+
 int read_file(char* filename,  char** buffer){
     int buf_cap = MAX_LEN;
     char* buf = malloc(buf_cap * sizeof(char));
@@ -50,7 +67,7 @@ int read_file(char* filename,  char** buffer){
     
 }
 
-void parse_args(int argc, char** argv, arguments *args){
+void parse_args(int argc, char** argv, arguments *args, int* mode){
     
     args->filenames = malloc(argc * sizeof(char*));
     int index = 0;
@@ -65,7 +82,12 @@ void parse_args(int argc, char** argv, arguments *args){
         }
     }
 
-    args->file_count = index;
+    if (index > 0){
+        args->file_count = index;
+        *mode = 0;
+    } else {
+        *mode = 1;
+    }
 }
 
 int write_buffer(char* buffer, int size){
@@ -75,30 +97,39 @@ int write_buffer(char* buffer, int size){
 int main(int argc, char** argv){
 
     int debug = 0;
+    /*
+        0 mode - file mode
+        1 mode - stdin mode
+    */
+    int mode = 0;
     arguments args = {0};
-    parse_args(argc, argv, &args);
+    parse_args(argc, argv, &args, &mode);
     
     char* buffer = NULL;
     int buf_size = 0;
-     
-    for (int i=0; i < args.file_count; i++){
-        
-        char* content = NULL;
-        int content_size = 0;
-        content_size = read_file(args.filenames[i], &content);
 
-        buffer = realloc(buffer, buf_size + content_size + 1);
-        memcpy(buffer+buf_size, content, content_size);
-        buf_size += content_size;
+    // file mode
+    if (mode == 0){
+        for (int i=0; i < args.file_count; i++){      
+            char* content = NULL;
+            int content_size = 0;
+            content_size = read_file(args.filenames[i], &content);
 
-        free(content);
+            buffer = realloc(buffer, buf_size + content_size + 1);
+            memcpy(buffer+buf_size, content, content_size);
+            buf_size += content_size;
+
+            free(content);
+        }
+
+        buffer[buf_size] = '\0';
+        write_buffer(buffer, buf_size);
+        free(buffer);
+        free(args.filenames);
+    } else if (mode == 1){
+        read_stdin();
     }
-
-    buffer[buf_size] = '\0';
-    write_buffer(buffer, buf_size);
-    free(buffer);
-    free(args.filenames);
-
+    
 
     return 0;
 }
