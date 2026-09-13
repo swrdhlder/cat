@@ -1,6 +1,12 @@
+
+
+
+
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <math.h>
 
 #define MAX_LEN 128
 
@@ -13,6 +19,9 @@ typedef struct mode{
     int global_mode;
     int newlines;
     int tabs; 
+    int numbers;
+    int lines;
+    int nonempty_numbers;
 };
 		
 struct mode mode;
@@ -33,6 +42,15 @@ int read_stdin(){
     return exit_code;
 }
 
+void count_newlines(char *buffer, int buffer_size){
+    int newlines = 0;
+    for (int i=0; i<buffer_size; i++){
+        if (buffer[i] == '\n'){
+            newlines++;
+        }
+    }
+    mode.lines = newlines;
+}
 
 int read_file(char* filename,  char** buffer){
     int buf_cap = MAX_LEN;
@@ -64,15 +82,11 @@ int read_file(char* filename,  char** buffer){
         }
         buf_size += size;
     } while (size > 0);
-
     fclose(f);
-
     buf[buf_size] = '\0';
-
     *buffer = buf;
-
+    count_newlines(buf, buf_size);
     return buf_size;
-    
 }
 
 void parse_args(int argc, char** argv, arguments *args){
@@ -80,6 +94,8 @@ void parse_args(int argc, char** argv, arguments *args){
     int index = 0;
     mode.newlines = 0;
     mode.tabs = 0;
+    mode.numbers = 0;
+    mode.nonempty_numbers = 1;
 
     for(int i=1; i < argc; i++){
         if ((strcmp(argv[i], "--help") == 0) || (strcmp(argv[i], "-h") == 0)){
@@ -92,10 +108,14 @@ void parse_args(int argc, char** argv, arguments *args){
             mode.newlines = 1;
         } else if ((strcmp(argv[i], "-T") == 0)){
             mode.tabs = 1;
+        } else if ((strcmp(argv[i], "-n") == 0)){
+            mode.numbers = 1;
+        } else if ((strcmp(argv[i], "-b") == 0)){
+            mode.nonempty_numbers = 1;
         } else {
             args->filenames[index] = argv[i];
             index++;
-        }
+        } 
     }
     if (index > 0){
         args->file_count = index;
@@ -105,9 +125,41 @@ void parse_args(int argc, char** argv, arguments *args){
     }
 }
 
+int count_digits_newlines(){
+    return log10(mode.lines)+2;
+}
+
+void print_line_numbers(int* ln, char* l_buffer, int dig){
+    float digs = log10(*ln);
+    int spaces_before = 2 + (dig - digs);
+    if ( (int) digs == digs){
+        spaces_before--;
+    }
+    for (int i = 0; i<spaces_before; i++){
+        fputs(" ", stdout);
+    }
+    sprintf(l_buffer, "%d  ", *ln);
+    fputs(l_buffer, stdout);
+    (*ln)++;
+}
+
 int write_buffer(char* buffer, int size){
+    // numbering of the lines is done using an index starting with 1
+    unsigned int line_number = 1;
+    int digits_newlines = count_digits_newlines();
+    char ln_buffer[digits_newlines+1];
+
+    if (mode.numbers){
+        print_line_numbers(&line_number, ln_buffer, digits_newlines);    
+    } else if (mode.nonempty_numbers){
+        if (buffer[0] != '\n'){
+            print_line_numbers(&line_number, ln_buffer, digits_newlines);
+        }
+    }
+
     // if any one of the modes are active, use the character-by-character writing.
-    if (mode.newlines + mode.tabs >= 1){
+
+    if (mode.newlines || mode.tabs || mode.newlines || mode.nonempty_numbers){
         for (int i = 0; i < size; i++){
             char act = *(buffer + i);
             switch (act){
@@ -115,15 +167,24 @@ int write_buffer(char* buffer, int size){
                     exit(0);
                     break;
                 case '\t':
-                    if (mode.tabs == 1){ fputs("^I", stdout);}
+                    if (mode.tabs){ fputs("^I", stdout);}
                     break;
                 case '\n':
-                    if (mode.newlines == 1){ fputs("$\n", stdout);}
+                    if (mode.newlines){ fputs("\n$", stdout);}
+                    fputc('\n', stdout);
+                    if (mode.numbers){
+                        print_line_numbers(&line_number, ln_buffer, digits_newlines); 
+                    } else if (mode.nonempty_numbers){
+                        char next = *(buffer + i + 1);
+                        if (next != '\n' && next != '\0'){
+                            print_line_numbers(&line_number, ln_buffer, digits_newlines);
+                        }
+                    }
                     break;
                 default:
                     fputc(act, stdout);
             }
-    }
+        }
     } else {
         fwrite(buffer, sizeof(char), size, stdout);
     }
@@ -143,12 +204,13 @@ int main(int argc, char** argv){
         for (int i=0; i < args.file_count; i++){      
             char* content = NULL;
             int content_size = 0;
-            content_size = read_file(args.filenames[i], &content);
 
+            content_size = read_file(args.filenames[i], &content);
+            
             buffer = realloc(buffer, buf_size + content_size + 1);
             memcpy(buffer+buf_size, content, content_size);
             buf_size += content_size;
-
+            
             free(content);
         }
 
