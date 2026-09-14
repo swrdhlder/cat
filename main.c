@@ -1,8 +1,3 @@
-
-
-
-
-
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
@@ -16,15 +11,15 @@ typedef struct arguments{
 } arguments;
 
 typedef struct mode{
-    int global_mode;
+    int global_printmode;
     int newlines;
     int tabs; 
     int numbers;
     int lines;
     int nonempty_numbers;
-};
+}mode;
 		
-struct mode mode;
+struct mode printmode;
 
 int read_stdin(){
     int exit_code = 0;
@@ -49,7 +44,7 @@ void count_newlines(char *buffer, int buffer_size){
             newlines++;
         }
     }
-    mode.lines = newlines;
+    printmode.lines = newlines;
 }
 
 int read_file(char* filename,  char** buffer){
@@ -92,10 +87,11 @@ int read_file(char* filename,  char** buffer){
 void parse_args(int argc, char** argv, arguments *args){
     args->filenames = malloc(argc * sizeof(char*));
     int index = 0;
-    mode.newlines = 0;
-    mode.tabs = 0;
-    mode.numbers = 0;
-    mode.nonempty_numbers = 1;
+    printmode.newlines = 0;
+    printmode.tabs = 0;
+    printmode.numbers = 0;
+    printmode.nonempty_numbers = 0;
+
 
     for(int i=1; i < argc; i++){
         if ((strcmp(argv[i], "--help") == 0) || (strcmp(argv[i], "-h") == 0)){
@@ -105,28 +101,60 @@ void parse_args(int argc, char** argv, arguments *args){
             printf("Version 0.1 by Olaf :D\n");
             exit(0);
         } else if ((strcmp(argv[i], "-E") == 0)){
-            mode.newlines = 1;
+            printmode.newlines = 1;
         } else if ((strcmp(argv[i], "-T") == 0)){
-            mode.tabs = 1;
+            printmode.tabs = 1;
         } else if ((strcmp(argv[i], "-n") == 0)){
-            mode.numbers = 1;
+            printmode.numbers = 1;
         } else if ((strcmp(argv[i], "-b") == 0)){
-            mode.nonempty_numbers = 1;
+            printmode.nonempty_numbers = 1;
+        } else if ((strcmp(argv[i], "-A") == 0)){
+            // Activate all non-readable character printing
+            printmode.newlines = 1;
+            printmode.tabs = 1;
         } else {
-            args->filenames[index] = argv[i];
-            index++;
+            // multiple parameter per dash handling
+            if (argv[i][0] == '-'){
+                for (int j = 0; j< strlen(argv[i]); j++){
+                    char arg = argv[i][j];
+                    switch (arg){
+                        case 'E':
+                            printmode.newlines = 1;
+                            break;
+                        case 'T':
+                            printmode.tabs = 1;
+                            break;
+                        case 'n':
+                            printmode.numbers = 1;
+                            break;
+                        case 'b':
+                            printmode.nonempty_numbers = 1;
+                            break;
+                        case 'A':
+                            printmode.newlines = 1;
+                            printmode.tabs = 1;
+                            break;
+                        default:
+                            printf("ERROR - invalid arguments\n");
+                            exit(3);
+                    }
+                }
+            } else {
+                args->filenames[index] = argv[i];
+                index++;
+            }
         } 
     }
     if (index > 0){
         args->file_count = index;
-        mode.global_mode = 0;
+        printmode.global_printmode = 0;
     } else {
-        mode.global_mode = 1;
+        printmode.global_printmode = 1;
     }
 }
 
 int count_digits_newlines(){
-    return log10(mode.lines)+2;
+    return log10(printmode.lines)+2;
 }
 
 void print_line_numbers(int* ln, char* l_buffer, int dig){
@@ -149,17 +177,23 @@ int write_buffer(char* buffer, int size){
     int digits_newlines = count_digits_newlines();
     char ln_buffer[digits_newlines+1];
 
-    if (mode.numbers){
+    if (printmode.numbers){
         print_line_numbers(&line_number, ln_buffer, digits_newlines);    
-    } else if (mode.nonempty_numbers){
+    } else if (printmode.nonempty_numbers){
         if (buffer[0] != '\n'){
             print_line_numbers(&line_number, ln_buffer, digits_newlines);
         }
     }
 
-    // if any one of the modes are active, use the character-by-character writing.
+    // if any one of the printmodes are active, use the character-by-character writing.
 
-    if (mode.newlines || mode.tabs || mode.newlines || mode.nonempty_numbers){
+    if (printmode.newlines || printmode.tabs || printmode.newlines || printmode.nonempty_numbers){
+
+        if (printmode.numbers && printmode.nonempty_numbers){
+            // Setting precedence to the non-empty numbers
+            printmode.numbers = 0;
+        }
+
         for (int i = 0; i < size; i++){
             char act = *(buffer + i);
             switch (act){
@@ -167,17 +201,17 @@ int write_buffer(char* buffer, int size){
                     exit(0);
                     break;
                 case '\t':
-                    if (mode.tabs){ fputs("^I", stdout);}
+                    if (printmode.tabs){ fputs("^I", stdout);}
                     break;
                 case '\n':
-                    if (mode.newlines){ fputs("\n$", stdout);}
-                    fputc('\n', stdout);
-                    if (mode.numbers){
+                    if (printmode.newlines){ fputs("$\n", stdout);}
+                    if (printmode.numbers){
                         print_line_numbers(&line_number, ln_buffer, digits_newlines); 
-                    } else if (mode.nonempty_numbers){
+                    } else if (printmode.nonempty_numbers){
                         char next = *(buffer + i + 1);
                         if (next != '\n' && next != '\0'){
                             print_line_numbers(&line_number, ln_buffer, digits_newlines);
+
                         }
                     }
                     break;
@@ -198,8 +232,8 @@ int main(int argc, char** argv){
     char* buffer = NULL;
     int buf_size = 0;
 
-    // file mode
-    if (mode.global_mode == 0){
+    // file printmode
+    if (printmode.global_printmode == 0){
     
         for (int i=0; i < args.file_count; i++){      
             char* content = NULL;
@@ -218,7 +252,7 @@ int main(int argc, char** argv){
         write_buffer(buffer, buf_size);
         free(buffer);
         free(args.filenames);
-    } else if (mode.global_mode == 1){
+    } else if (printmode.global_printmode == 1){
         read_stdin();
     }
     
