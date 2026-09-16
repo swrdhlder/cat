@@ -17,7 +17,7 @@ typedef struct mode{
     int numbers;
     int lines;
     int nonempty_numbers;
-}mode;
+};
 		
 struct mode printmode;
 
@@ -94,6 +94,7 @@ void parse_args(int argc, char** argv, arguments *args){
 
 
     for(int i=1; i < argc; i++){
+        
         if ((strcmp(argv[i], "--help") == 0) || (strcmp(argv[i], "-h") == 0)){
             printf("Concatenate FILE(s), or standard input, to standard output\nWith no FILE, or when FILE is -, read standard input.\n\nUsage: cat [OPTION]... [FILE]...\n\nOptions:\n  -A, --show-all          equivalent to -vET\n  -b, --number-nonblank   number nonempty output lines, overrides -n\n  -e                      equivalent to -vE\n  -E, --show-ends         display $ at end of each line\n  -n, --number            number all output lines\n  -s, --squeeze-blank     suppress repeated empty output lines\n  -t                      equivalent to -vT\n  -T, --show-tabs         display TAB characters at ^I\n  -v, --show-nonprinting  use ^ and M- notation, except for LF (\\n) and TAB (\\t)\n  -u                      (ignored)\n  -h, --help              Print help  -V, --version           Print version\n");
             exit(0);
@@ -115,7 +116,7 @@ void parse_args(int argc, char** argv, arguments *args){
         } else {
             // multiple parameter per dash handling
             if (argv[i][0] == '-'){
-                for (int j = 0; j< strlen(argv[i]); j++){
+                for (int j = 1; j< strlen(argv[i]); j++){
                     char arg = argv[i][j];
                     switch (arg){
                         case 'E':
@@ -135,7 +136,7 @@ void parse_args(int argc, char** argv, arguments *args){
                             printmode.tabs = 1;
                             break;
                         default:
-                            printf("ERROR - invalid arguments\n");
+                            printf("ERROR - %s invalid arguments\n", argv[i]);
                             exit(3);
                     }
                 }
@@ -178,22 +179,21 @@ int write_buffer(char* buffer, int size){
     char ln_buffer[digits_newlines+1];
 
     if (printmode.numbers){
-        print_line_numbers(&line_number, ln_buffer, digits_newlines);    
+        print_line_numbers(&line_number, ln_buffer, digits_newlines);   
     } else if (printmode.nonempty_numbers){
         if (buffer[0] != '\n'){
             print_line_numbers(&line_number, ln_buffer, digits_newlines);
         }
     }
 
+
     // if any one of the printmodes are active, use the character-by-character writing.
+    if (printmode.newlines || printmode.tabs || printmode.numbers || printmode.nonempty_numbers){
 
-    if (printmode.newlines || printmode.tabs || printmode.newlines || printmode.nonempty_numbers){
-
-        if (printmode.numbers && printmode.nonempty_numbers){
+        if (printmode.numbers == 1 && printmode.nonempty_numbers == 1){
             // Setting precedence to the non-empty numbers
             printmode.numbers = 0;
         }
-
         for (int i = 0; i < size; i++){
             char act = *(buffer + i);
             switch (act){
@@ -201,11 +201,18 @@ int write_buffer(char* buffer, int size){
                     exit(0);
                     break;
                 case '\t':
-                    if (printmode.tabs){ fputs("^I", stdout);}
+                    if (printmode.tabs){ 
+                        fputs("^I", stdout);}
                     break;
                 case '\n':
-                    if (printmode.newlines){ fputs("$\n", stdout);}
-                    if (printmode.numbers){
+
+                    // if newlines is selected, print $ then newline
+                    // if numbers or nonempty_numbers is selected, after newline print the next number
+                    // in any other case, just the newline is printed.
+                    if (printmode.newlines){ fputs("$", stdout);}
+                    fputc('\n', stdout);
+
+                    if (printmode.numbers == 1){
                         print_line_numbers(&line_number, ln_buffer, digits_newlines); 
                     } else if (printmode.nonempty_numbers){
                         char next = *(buffer + i + 1);
@@ -213,7 +220,14 @@ int write_buffer(char* buffer, int size){
                             print_line_numbers(&line_number, ln_buffer, digits_newlines);
 
                         }
+
+                    } else {
+                        
+                        // fputc('\n', stdout);
+                        // i++;
+
                     }
+                    
                     break;
                 default:
                     fputc(act, stdout);
